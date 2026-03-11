@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Günlük Takip - Uygulama</title>
     <style>
-        /* --- GENEL AYARLAR VE SOL MENÜ --- */
+        /* --- GENEL AYARLAR VE SOL MENÜ (Değişmedi) --- */
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; display: flex; height: 100vh; overflow: hidden; }
         .sidebar { width: 250px; background-color: #2c3e50; color: white; display: flex; flex-direction: column; padding-top: 20px; }
         .sidebar-header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid #34495e; margin-bottom: 20px; }
@@ -40,7 +40,7 @@
         .input-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .input-group select { padding: 12px; border: 1px solid #ccc; border-radius: 6px; outline: none; font-size: 15px; }
         .input-group input[type="text"] { flex: 1; min-width: 200px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; }
-        .input-group input[type="number"] { width: 90px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; } /* Süre için yeni input */
+        .input-group input[type="number"] { width: 90px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; }
         button.btn-primary { padding: 12px 20px; background-color: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         button.btn-primary:hover { background-color: #2980b9; }
         button.btn-danger { background-color: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
@@ -55,9 +55,14 @@
         .history-card { background-color: #f8f9fa; border-left: 4px solid #3498db; padding: 15px; margin-top: 15px; border-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);}
         .history-card h3 { margin: 0 0 10px 0; font-size: 16px; color: #2c3e50; }
         .history-card p { margin: 5px 0; font-size: 14px; color: #555; }
+        
+        /* Yükleniyor Ekranı */
+        #loading-screen { position: absolute; top:0; left:0; width: 100%; height: 100%; background: rgba(255,255,255,0.9); display: flex; justify-content: center; align-items: center; z-index: 1000; font-size: 20px; font-weight: bold; color: #3498db; }
     </style>
 </head>
 <body>
+
+    <div id="loading-screen">Verileriniz Buluttan Yükleniyor...</div>
 
     <div class="sidebar">
         <div class="sidebar-header">
@@ -70,7 +75,6 @@
     </div>
 
     <div class="main-content">
-        
         <div id="dashboard-page" class="page-section active">
             <h1>Bugünün Özeti</h1>
             <div class="time-inputs">
@@ -105,109 +109,197 @@
         <div id="profile-page" class="page-section">
             <h1>Profil Bilgileri</h1>
             <p><strong>Ad Soyad:</strong> <span id="profile-name"></span></p>
-            <p><strong>E-Posta:</strong> <span id="profile-email"></span></p><br>
+            <br>
             <button class="btn-danger" style="padding: 10px 20px; font-size: 16px;" onclick="logout()">Sistemden Çıkış Yap</button>
 
             <h2 style="margin-top: 40px; border-bottom: 2px solid #eee; padding-bottom: 10px;">Geçmiş Günlerin Özeti</h2>
-            <div id="history-container">
-                </div>
+            <div id="history-container"></div>
         </div>
-
     </div>
 
-    <script>
-        // Veri Yapıları
-        let tasksData = JSON.parse(localStorage.getItem('tasksDataComplex')) || {}; // Süreli olduğu için anahtarı değiştirdim ki eski verilerle çakışmasın
-        let todayCompleted = JSON.parse(localStorage.getItem('todayCompleted')) || [];
-        let taskHistory = JSON.parse(localStorage.getItem('taskHistory')) || {};
+    <script type="module">
+        // Firebase Firestore Kütüphanelerini Dahil Ediyoruz
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        window.onload = () => {
-            checkAndResetNewDay(); // Gün değişmiş mi kontrol et
-            loadUserInfo(); loadDate(); loadTimes();
-            renderManageList(); renderDashboardList(); renderHistoryList();
+        // Senin Firebase Ayarların
+        const firebaseConfig = {
+            apiKey: "AIzaSyBaQaoRd_-KRjiQrjpmIe5SV4qX3TcWwOQ",
+            authDomain: "takipsistemi-24d4e.firebaseapp.com",
+            projectId: "takipsistemi-24d4e",
+            storageBucket: "takipsistemi-24d4e.firebasestorage.app",
+            messagingSenderId: "865411033946",
+            appId: "1:865411033946:web:f07f1d159e43434c7a6163",
+            measurementId: "G-6KQDCCJ56L"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Kullanıcı Kimliği Kontrolü (Giriş yapmamışsa index'e at)
+        const userUID = localStorage.getItem('userUID');
+        if (!userUID) {
+            window.location.href = 'index.html';
         }
 
-        // --- GÜN DEĞİŞİMİ VE GEÇMİŞE KAYIT MANTIĞI ---
-        function checkAndResetNewDay() {
-            const todayString = new Date().toLocaleDateString('tr-TR'); // Örn: "11.03.2026"
-            const savedDate = localStorage.getItem('currentWorkingDate');
+        // Bulutta tutacağımız değişkenlerimiz
+        let tasksData = {};
+        let todayCompleted = [];
+        let taskHistory = {};
+        let sleepTimeVal = '';
+        let wakeTimeVal = '';
+        let currentWorkingDate = '';
 
-            if (savedDate && savedDate !== todayString) {
-                // Eğer daha önceden bir gün kaydedilmişse ve o gün bugün değilse, dünü arşive at!
-                taskHistory[savedDate] = {
+        // Sayfa Yüklendiğinde Veritabanına Bağlan
+        window.onload = async () => {
+            await loadDataFromFirebase(); // Önce verileri buluttan çek
+            
+            document.getElementById('loading-screen').style.display = 'none'; // Yükleniyor yazısını gizle
+            
+            loadUserInfo(); 
+            loadDate(); 
+            
+            // Saatleri kutucuklara yerleştir
+            document.getElementById('sleep-time').value = sleepTimeVal;
+            document.getElementById('wake-time').value = wakeTimeVal;
+            
+            await checkAndResetNewDay(); // Gün değiştiyse kontrol et
+            
+            renderManageList(); 
+            renderDashboardList(); 
+            renderHistoryList();
+        }
+
+        // --- 1. BULUTTAN VERİ ÇEKME ---
+        async function loadDataFromFirebase() {
+            try {
+                const docRef = doc(db, "users", userUID);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    tasksData = data.tasksData || {};
+                    todayCompleted = data.todayCompleted || [];
+                    taskHistory = data.taskHistory || {};
+                    sleepTimeVal = data.sleepTime || '';
+                    wakeTimeVal = data.wakeTime || '';
+                    currentWorkingDate = data.currentWorkingDate || '';
+                }
+            } catch (error) {
+                console.error("Veri çekerken hata:", error);
+                alert("Veriler yüklenirken bir hata oluştu.");
+            }
+        }
+
+        // --- 2. BULUTA VERİ KAYDETME ---
+        async function saveDataToFirebase() {
+            try {
+                const docRef = doc(db, "users", userUID);
+                await setDoc(docRef, {
+                    tasksData: tasksData,
+                    todayCompleted: todayCompleted,
+                    taskHistory: taskHistory,
+                    sleepTime: sleepTimeVal,
+                    wakeTime: wakeTimeVal,
+                    currentWorkingDate: currentWorkingDate
+                }, { merge: true }); // Merge: Var olan diğer verileri bozmadan üstüne yazar
+            } catch (error) {
+                console.error("Veri kaydederken hata:", error);
+            }
+        }
+
+        // --- GÜN DEĞİŞİMİ KONTROLÜ ---
+        async function checkAndResetNewDay() {
+            const todayString = new Date().toLocaleDateString('tr-TR'); 
+
+            if (currentWorkingDate && currentWorkingDate !== todayString) {
+                taskHistory[currentWorkingDate] = {
                     completedTasksCount: todayCompleted.length,
-                    sleepTime: localStorage.getItem('sleepTime') || 'Girmedi',
-                    wakeTime: localStorage.getItem('wakeTime') || 'Girmedi'
+                    sleepTime: sleepTimeVal || 'Girmedi',
+                    wakeTime: wakeTimeVal || 'Girmedi'
                 };
-                localStorage.setItem('taskHistory', JSON.stringify(taskHistory));
-
-                // Bugün için tikleri ve saatleri sıfırla
+                
                 todayCompleted = [];
-                localStorage.setItem('todayCompleted', JSON.stringify([]));
-                localStorage.removeItem('sleepTime');
-                localStorage.removeItem('wakeTime');
+                sleepTimeVal = '';
+                wakeTimeVal = '';
+                document.getElementById('sleep-time').value = '';
+                document.getElementById('wake-time').value = '';
             }
 
-            // Bugünü sisteme kaydet
-            localStorage.setItem('currentWorkingDate', todayString);
+            currentWorkingDate = todayString;
+            await saveDataToFirebase(); // Değişiklikleri buluta kaydet
         }
 
-        function switchTab(tabId, element) {
+        // --- GÖRSEL VE FONKSİYONEL İŞLEMLER ---
+        // Modül yapısında fonksiyonların HTML'den çağrılabilmesi için 'window' objesine eklememiz gerekir.
+        window.switchTab = function(tabId, element) {
             document.querySelectorAll('.page-section').forEach(page => page.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
             document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
             element.classList.add('active');
             
             if(tabId === 'dashboard-page') renderDashboardList();
-            if(tabId === 'profile-page') renderHistoryList(); // Profile geçince geçmişi güncelle
+            if(tabId === 'profile-page') renderHistoryList(); 
         }
 
         function loadUserInfo() {
-            document.getElementById('user-display-name').textContent = localStorage.getItem('userName') || 'Misafir';
-            document.getElementById('profile-name').textContent = localStorage.getItem('userName') || 'Misafir';
-            document.getElementById('profile-email').textContent = localStorage.getItem('userEmail') || '-';
+            const name = localStorage.getItem('userName') || 'Misafir';
+            document.getElementById('user-display-name').textContent = name;
+            document.getElementById('profile-name').textContent = name;
         }
+
         function loadDate() {
             document.getElementById('current-date-sidebar').textContent = new Date().toLocaleDateString('tr-TR', { weekday: 'long', month: 'long', day: 'numeric' });
         }
-        function saveTimes() {
-            localStorage.setItem('sleepTime', document.getElementById('sleep-time').value);
-            localStorage.setItem('wakeTime', document.getElementById('wake-time').value);
-        }
-        function loadTimes() {
-            document.getElementById('sleep-time').value = localStorage.getItem('sleepTime') || '';
-            document.getElementById('wake-time').value = localStorage.getItem('wakeTime') || '';
+
+        window.saveTimes = async function() {
+            sleepTimeVal = document.getElementById('sleep-time').value;
+            wakeTimeVal = document.getElementById('wake-time').value;
+            await saveDataToFirebase();
         }
 
-        // --- GÖREV EKLEME (SÜRELİ) ---
-        function addHabit() {
+        window.addHabit = async function() {
             const category = document.getElementById('task-category').value;
             const nameInput = document.getElementById('new-habit-input');
             const durationInput = document.getElementById('new-habit-duration');
             
             const taskText = nameInput.value.trim();
-            const taskDuration = durationInput.value.trim() || "Belirtilmedi"; // Süre girilmezse
+            const taskDuration = durationInput.value.trim() || "Belirtilmedi"; 
 
             if (taskText !== '') {
                 if (!tasksData[category]) tasksData[category] = [];
-                
-                // Artık sadece isim değil, bir "Obje" kaydediyoruz
                 tasksData[category].push({ name: taskText, duration: taskDuration });
                 
-                localStorage.setItem('tasksDataComplex', JSON.stringify(tasksData));
+                await saveDataToFirebase(); // Buluta gönder
+                
                 nameInput.value = ''; durationInput.value = '';
                 renderManageList(); 
             }
         }
 
-        function deleteHabit(category, taskIndex) {
+        window.deleteHabit = async function(category, taskIndex) {
             tasksData[category].splice(taskIndex, 1);
             if (tasksData[category].length === 0) delete tasksData[category];
             
-            localStorage.setItem('tasksDataComplex', JSON.stringify(tasksData));
+            await saveDataToFirebase(); // Bulutu güncelle
             renderManageList();
         }
 
+        window.toggleTask = async function(category, taskName, checkboxElement) {
+            const uniqueId = `${category}|${taskName}`;
+            if (checkboxElement.checked) {
+                if (!todayCompleted.includes(uniqueId)) todayCompleted.push(uniqueId);
+                checkboxElement.parentElement.classList.add('completed');
+            } else {
+                todayCompleted = todayCompleted.filter(item => item !== uniqueId);
+                checkboxElement.parentElement.classList.remove('completed');
+            }
+            
+            await saveDataToFirebase(); // Tikleri anında buluta kaydet
+            updateProgress();
+        }
+
+        // --- RENDER (EKRANA ÇİZME) FONKSİYONLARI ---
         function renderManageList() {
             const grid = document.getElementById('manage-grid');
             grid.innerHTML = ''; 
@@ -215,17 +307,12 @@
                 let listHtml = '';
                 tasksData[category].forEach((task, index) => {
                     const durationText = task.duration !== "Belirtilmedi" ? `<span class="duration-badge">${task.duration} Dk</span>` : '';
-                    listHtml += `
-                        <li>
-                            <span class="task-label">${task.name} ${durationText}</span>
-                            <button class="btn-danger" onclick="deleteHabit('${category}', ${index})">Sil</button>
-                        </li>`;
+                    listHtml += `<li><span class="task-label">${task.name} ${durationText}</span><button class="btn-danger" onclick="deleteHabit('${category}', ${index})">Sil</button></li>`;
                 });
                 grid.innerHTML += `<div class="category-card"><div class="category-title">${category}</div><ul>${listHtml}</ul></div>`;
             }
         }
 
-        // --- ANA SAYFA LİSTELEME ---
         function renderDashboardList() {
             const grid = document.getElementById('dashboard-grid');
             const noTaskMsg = document.getElementById('no-task-msg');
@@ -243,28 +330,11 @@
                         const completedClass = isChecked ? 'completed' : '';
                         const durationText = task.duration !== "Belirtilmedi" ? `<span class="duration-badge">${task.duration} Dk</span>` : '';
 
-                        listHtml += `
-                            <li class="${completedClass}">
-                                <input type="checkbox" class="task-checkbox" onchange="toggleTask('${category}', '${task.name}', this)" ${isChecked}>
-                                <span class="task-label">${task.name} ${durationText}</span>
-                            </li>`;
+                        listHtml += `<li class="${completedClass}"><input type="checkbox" class="task-checkbox" onchange="toggleTask('${category}', '${task.name}', this)" ${isChecked}><span class="task-label">${task.name} ${durationText}</span></li>`;
                     });
                     grid.innerHTML += `<div class="category-card"><div class="category-title">${category}</div><ul>${listHtml}</ul></div>`;
                 }
             }
-            updateProgress();
-        }
-
-        function toggleTask(category, taskName, checkboxElement) {
-            const uniqueId = `${category}|${taskName}`;
-            if (checkboxElement.checked) {
-                if (!todayCompleted.includes(uniqueId)) todayCompleted.push(uniqueId);
-                checkboxElement.parentElement.classList.add('completed');
-            } else {
-                todayCompleted = todayCompleted.filter(item => item !== uniqueId);
-                checkboxElement.parentElement.classList.remove('completed');
-            }
-            localStorage.setItem('todayCompleted', JSON.stringify(todayCompleted));
             updateProgress();
         }
 
@@ -273,17 +343,14 @@
             for (const category in tasksData) totalTasks += tasksData[category].length;
             const completedTasks = todayCompleted.length;
             let percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
             document.getElementById('progress-percentage').innerText = `%${percentage}`;
             document.getElementById('progress-bar').style.width = `${percentage}%`;
         }
 
-        // --- GEÇMİŞ GÜNLERİ PROFİLDE LİSTELEME ---
         function renderHistoryList() {
             const container = document.getElementById('history-container');
             container.innerHTML = '';
-
-            const dates = Object.keys(taskHistory).reverse(); // En yeni tarih en üstte çıksın
+            const dates = Object.keys(taskHistory).reverse(); 
             
             if (dates.length === 0) {
                 container.innerHTML = '<p style="color: #7f8c8d; font-style: italic;">Henüz tamamlanıp kaydedilmiş geçmiş bir gününüz bulunmuyor.</p>';
@@ -297,12 +364,14 @@
                         <h3>📅 Tarih: ${date}</h3>
                         <p>🛏️ Yatma Saati: <strong>${dayData.sleepTime}</strong> | ⏰ Kalkma Saati: <strong>${dayData.wakeTime}</strong></p>
                         <p>✅ O gün tamamlanan toplam görev sayısı: <strong>${dayData.completedTasksCount}</strong></p>
-                    </div>
-                `;
+                    </div>`;
             });
         }
 
-        function logout() { window.location.href = 'index.html'; }
+        window.logout = function() { 
+            localStorage.clear(); // Çıkarken UID'yi sil
+            window.location.href = 'index.html'; 
+        }
     </script>
 </body>
 </html>

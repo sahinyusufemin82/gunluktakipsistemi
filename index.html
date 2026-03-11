@@ -3,52 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Günlük Takip - Giriş</title>
+    <title>Günlük Takip - Gerçek Veritabanlı Giriş</title>
     <style>
-        /* Tasarım kodları öncekiyle tamamen aynı */
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            background-color: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 350px;
-            text-align: center;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
         h2 { color: #333; margin-bottom: 20px; }
-        input {
-            width: 100%; padding: 12px; margin: 10px 0;
-            border: 1px solid #ccc; border-radius: 5px;
-            box-sizing: border-box; font-size: 14px;
-        }
-        button {
-            width: 100%; padding: 12px; background-color: #007bff;
-            color: white; border: none; border-radius: 5px;
-            font-size: 16px; cursor: pointer; margin-top: 10px;
-            transition: background-color 0.3s;
-        }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
+        button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 10px; transition: 0.3s; }
         button:hover { background-color: #0056b3; }
         .toggle-text { margin-top: 20px; font-size: 14px; color: #666; }
         .toggle-text span { color: #007bff; cursor: pointer; font-weight: bold; }
         .toggle-text span:hover { text-decoration: underline; }
         .hidden { display: none; }
-        
-        /* Hata ve Başarı Mesajları İçin Yeni Tasarım */
-        #message-box {
-            margin-top: 15px;
-            font-size: 14px;
-            font-weight: bold;
-            min-height: 20px; /* Boşken yer kaplaması için */
-        }
+        #message-box { margin-top: 15px; font-size: 14px; font-weight: bold; min-height: 20px; }
         .error { color: #dc3545; }
         .success { color: #28a745; }
     </style>
@@ -56,108 +23,130 @@
 <body>
 
     <div class="container">
-        
-        <form id="login-form" onsubmit="loginUser(event)">
+        <form id="login-form">
             <h2>Giriş Yap</h2>
             <input type="email" id="login-email" placeholder="E-posta Adresiniz" required>
             <input type="password" id="login-password" placeholder="Şifreniz" required>
             <button type="submit">Giriş Yap</button>
             <div class="toggle-text">
-                Hesabın yok mu? <span onclick="toggleForms()">Kayıt Ol</span>
+                Hesabın yok mu? <span id="go-to-register">Kayıt Ol</span>
             </div>
         </form>
 
-        <form id="register-form" class="hidden" onsubmit="registerUser(event)">
+        <form id="register-form" class="hidden">
             <h2>Kayıt Ol</h2>
             <input type="text" id="reg-name" placeholder="Adınız Soyadınız" required>
             <input type="email" id="reg-email" placeholder="E-posta Adresiniz" required>
-            <input type="password" id="reg-password" placeholder="Şifre Belirleyin (En az 6 hane)" minlength="6" required>
+            <input type="password" id="reg-password" placeholder="Şifre (En az 6 hane)" minlength="6" required>
             <button type="submit">Kayıt Ol</button>
             <div class="toggle-text">
-                Zaten bir hesabın var mı? <span onclick="toggleForms()">Giriş Yap</span>
+                Zaten hesabım var? <span id="go-to-login">Giriş Yap</span>
             </div>
         </form>
 
         <div id="message-box"></div>
-
     </div>
 
-    <script>
-        // Formlar arası geçiş fonksiyonu
-        function toggleForms() {
-            document.getElementById('login-form').classList.toggle('hidden');
-            document.getElementById('register-form').classList.toggle('hidden');
-            showMessage('', ''); // Geçiş yapınca eski mesajları temizle
-            
-            // Form içlerini temizle
-            document.getElementById('login-form').reset();
-            document.getElementById('register-form').reset();
-        }
+    <script type="module">
+        // Firebase kütüphanelerini internet üzerinden (CDN) projeye dahil ediyoruz
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
 
-        // Ekrana hata veya başarı mesajı basan yardımcı fonksiyon
+        // Senin Firebase Projenin Ayarları
+        const firebaseConfig = {
+            apiKey: "AIzaSyBaQaoRd_-KRjiQrjpmIe5SV4qX3TcWwOQ",
+            authDomain: "takipsistemi-24d4e.firebaseapp.com",
+            projectId: "takipsistemi-24d4e",
+            storageBucket: "takipsistemi-24d4e.firebasestorage.app",
+            messagingSenderId: "865411033946",
+            appId: "1:865411033946:web:f07f1d159e43434c7a6163",
+            measurementId: "G-6KQDCCJ56L"
+        };
+
+        // Firebase'i Başlat
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // --- ARAYÜZ (GÖRSEL) KONTROLLERİ ---
+        const loginForm = document.getElementById('login-form');
+        const registerForm = document.getElementById('register-form');
+        const msgBox = document.getElementById('message-box');
+
         function showMessage(text, type) {
-            const msgBox = document.getElementById('message-box');
             msgBox.textContent = text;
-            msgBox.className = type; // 'error' veya 'success' sınıfını ekler
+            msgBox.className = type;
         }
 
-        // E-posta formatının doğruluğunu katı bir şekilde kontrol eden Regex (Düzenli İfade)
-        function validateEmail(email) {
-            const re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
-            return re.test(email);
-        }
+        document.getElementById('go-to-register').addEventListener('click', () => {
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+            showMessage('', '');
+        });
 
-        // --- KAYIT OL İŞLEMİ ---
-        function registerUser(event) {
-            event.preventDefault(); // Sayfanın yenilenmesini engeller
+        document.getElementById('go-to-login').addEventListener('click', () => {
+            registerForm.classList.add('hidden');
+            loginForm.classList.remove('hidden');
+            showMessage('', '');
+        });
 
+        // --- GERÇEK VERİTABANINA KAYIT OLMA (REGISTER) ---
+        registerForm.addEventListener('submit', (e) => {
+            e.preventDefault(); 
+            
             const name = document.getElementById('reg-name').value;
             const email = document.getElementById('reg-email').value;
             const password = document.getElementById('reg-password').value;
 
-            // E-posta formatını kontrol et
-            if (!validateEmail(email)) {
-                showMessage('Lütfen geçerli bir e-posta adresi girin!', 'error');
-                return;
-            }
+            showMessage('Kaydınız oluşturuluyor, lütfen bekleyin...', '');
 
-            // Bilgileri tarayıcının hafızasına (Local Storage) kaydet
-            localStorage.setItem('userEmail', email);
-            localStorage.setItem('userPassword', password);
-            localStorage.setItem('userName', name);
+            createUserWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    const user = userCredential.user;
+                    
+                    updateProfile(user, { displayName: name }).then(() => {
+                        showMessage('Kayıt Başarılı! Veritabanına eklendiniz.', 'success');
+                        localStorage.setItem('userName', name); 
+                        
+                        setTimeout(() => {
+                            document.getElementById('go-to-login').click();
+                        }, 2000);
+                    });
+                })
+                .catch((error) => {
+                    if (error.code === 'auth/email-already-in-use') {
+                        showMessage('Bu e-posta zaten kayıtlı!', 'error');
+                    } else {
+                        showMessage('Bir hata oluştu: ' + error.message, 'error');
+                    }
+                });
+        });
 
-            showMessage('Kayıt başarılı! Giriş yapabilirsiniz.', 'success');
+        // --- GERÇEK VERİTABANINA GİRİŞ YAPMA (LOGIN) ---
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
             
-            // 1.5 saniye sonra otomatik olarak giriş ekranına at
-            setTimeout(() => {
-                toggleForms();
-            }, 1500);
-        }
-
-        // --- GİRİŞ YAP İŞLEMİ ---
-        function loginUser(event) {
-            event.preventDefault();
-
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
 
-            // Tarayıcı hafızasındaki (Local Storage) kayıtlı bilgileri çek
-            const savedEmail = localStorage.getItem('userEmail');
-            const savedPassword = localStorage.getItem('userPassword');
+            showMessage('Sisteme giriş yapılıyor...', '');
 
-            // Kontrol et: Kayıtlı e-posta var mı ve şifre uyuşuyor mu?
-            if (email === savedEmail && password === savedPassword) {
-                showMessage('Giriş başarılı! Yönlendiriliyorsunuz...', 'success');
-                
-                // 1 saniye sonra dashboard.html sayfasına yönlendir
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 1000);
-            } else {
-                showMessage('Hatalı e-posta veya şifre!', 'error');
-            }
-        }
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    const user = userCredential.user;
+                    
+                    localStorage.setItem('userName', user.displayName || 'Kullanıcı');
+                    localStorage.setItem('userUID', user.uid); 
+
+                    showMessage('Giriş başarılı! Yönlendiriliyorsunuz...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+                })
+                .catch((error) => {
+                    showMessage('Hatalı e-posta veya şifre girdiniz!', 'error');
+                });
+        });
     </script>
-
 </body>
 </html>
